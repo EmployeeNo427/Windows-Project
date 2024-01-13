@@ -3,6 +3,10 @@
 
 #include "framework.h"
 #include "WindowsProject1.h"
+#include <fstream>
+#include <commdlg.h>
+
+
 
 #define MAX_LOADSTRING 100
 
@@ -14,6 +18,12 @@ HWND hEdit;
 HWND hSaveButton;
 HWND hLoadButton;
 WCHAR savedNote[10000]; // This will store the saved note, you can increase the size if needed.
+HWND hWordCountLabel;
+HWND hClearButton;
+WCHAR wordCountText[100];
+const WCHAR* NOTE_FILE_PATH = L"notes.txt";
+
+
 
 
 // Forward declarations of functions included in this code module:
@@ -117,6 +127,20 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
        120, 220, 100, 30,
        hWnd, (HMENU)3, hInstance, NULL);
 
+    // Create Word Counter label
+   wsprintf(wordCountText, L"Words: 0");
+   hWordCountLabel = CreateWindowEx(0, L"STATIC", wordCountText,
+       WS_CHILD | WS_VISIBLE | SS_LEFT,
+       230, 225, 150, 25,
+       hWnd, NULL, hInstance, NULL);
+
+   // Create Clear button
+   hClearButton = CreateWindowEx(0, L"BUTTON", L"Clear",
+       WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
+       320, 220, 100, 30,
+       hWnd, (HMENU)4, hInstance, NULL);
+
+
 
    if (!hWnd)
    {
@@ -141,6 +165,28 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 //
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+
+    if (message == WM_COMMAND && HIWORD(wParam) == EN_CHANGE && (HWND)lParam == hEdit) {
+        int wordCount = 0;
+        int len = GetWindowTextLength(hEdit);
+        if (len > 0) {
+            WCHAR* text = new WCHAR[len + 1];
+            GetWindowText(hEdit, text, len + 1);
+
+            WCHAR* context = NULL; // context variable for wcstok_s
+            WCHAR* token = wcstok_s(text, L" \t\n", &context);
+            while (token != NULL) {
+                wordCount++;
+                token = wcstok_s(NULL, L" \t\n", &context);
+            }
+            delete[] text;
+        }
+        wsprintf(wordCountText, L"Words: %d", wordCount);
+        SetWindowText(hWordCountLabel, wordCountText);
+    }
+
+
+
     switch (message)
     {
     case WM_COMMAND:
@@ -149,12 +195,64 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         switch (wmId)
         {
         case 2: // Save button
-            GetWindowText(hEdit, savedNote, sizeof(savedNote) / sizeof(WCHAR));
-            MessageBox(hWnd, L"Note saved!", L"Info", MB_OK);
-            break;
+        {
+            OPENFILENAME ofn;
+            WCHAR szFileName[MAX_PATH] = L"";
+            ZeroMemory(&ofn, sizeof(ofn));
+
+            ofn.lStructSize = sizeof(ofn);
+            ofn.hwndOwner = hWnd;
+            ofn.lpstrFilter = L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
+            ofn.lpstrFile = szFileName;
+            ofn.nMaxFile = MAX_PATH;
+            ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT;
+            ofn.lpstrDefExt = L"txt";
+
+            if (GetSaveFileName(&ofn)) {
+                int len = GetWindowTextLength(hEdit) + 1;
+                WCHAR* text = new WCHAR[len];
+                GetWindowText(hEdit, text, len);
+
+                std::wofstream outFile(szFileName);
+                outFile << text;
+                outFile.close();
+
+                delete[] text;
+                MessageBox(hWnd, L"Note saved to file!", L"Info", MB_OK);
+            }
+        }
+        break;
+
         case 3: // Load button
-            SetWindowText(hEdit, savedNote);
-            MessageBox(hWnd, L"Note loaded!", L"Info", MB_OK);
+        {
+            OPENFILENAME ofn;
+            WCHAR szFileName[MAX_PATH] = L"";
+            ZeroMemory(&ofn, sizeof(ofn));
+
+            ofn.lStructSize = sizeof(ofn);
+            ofn.hwndOwner = hWnd;
+            ofn.lpstrFilter = L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
+            ofn.lpstrFile = szFileName;
+            ofn.nMaxFile = MAX_PATH;
+            ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+            ofn.lpstrDefExt = L"txt";
+
+            if (GetOpenFileName(&ofn)) {
+                std::wifstream inFile(szFileName);
+                std::wstring content((std::istreambuf_iterator<WCHAR>(inFile)), std::istreambuf_iterator<WCHAR>());
+                inFile.close();
+
+                SetWindowText(hEdit, content.c_str());
+                MessageBox(hWnd, L"Note loaded from file!", L"Info", MB_OK);
+            }
+        }
+        break;
+
+            // Inside WndProc function, inside the WM_COMMAND case
+        case 4: // Clear button
+            SetWindowText(hEdit, L"");
+            wsprintf(wordCountText, L"Words: 0");
+            SetWindowText(hWordCountLabel, wordCountText);
             break;
         case IDM_ABOUT:
             DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
